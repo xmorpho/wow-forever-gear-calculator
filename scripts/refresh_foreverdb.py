@@ -28,6 +28,8 @@ KEY = os.environ.get('FOREVERDB_API_KEY', '').strip()
 MAX_DETAILS = min(max(int(os.environ.get('MAX_DETAIL_REQUESTS', '8500')), 0), 8500)
 FORCE = os.environ.get('FORCE_DETAILS', 'false').lower() == 'true'
 DELAY = 1.15  # 52 req/min max, leaving headroom below ForeverDB's 60/minute limit
+DAILY_REMAINING = None
+DAILY_RESERVE = 20  # Avoid hitting the hard daily limit when headers reveal remaining quota
 LAST_REQUEST = 0.0
 
 SUPPORTED = {
@@ -58,7 +60,9 @@ class RateLimitError(Exception):
 
 
 def api_get(path):
-    global LAST_REQUEST
+    global LAST_REQUEST, DAILY_REMAINING
+    if DAILY_REMAINING is not None and DAILY_REMAINING <= DAILY_RESERVE:
+        raise RateLimitError(f'Daily quota nearly exhausted ({DAILY_REMAINING} remaining); cache will be published')
     if not KEY:
         raise RuntimeError('Missing FOREVERDB_API_KEY GitHub Actions secret')
     elapsed = time.monotonic() - LAST_REQUEST
@@ -72,6 +76,13 @@ def api_get(path):
         LAST_REQUEST = time.monotonic()
         try:
             with urllib.request.urlopen(req, timeout=45) as resp:
+                # ForeverDB documents X-Daily headers. Only interpret a clearly named
+                # *remaining* count; header layouts can change between API versions.
+                for header, value in resp.headers.items():
+                    if 'daily' in header.lower() and 'remaining' in header.lower():
+                        m = re.search(r'\d+', value)
+                        if m:
+                            DAILY_REMAINING = int(m.group())
                 obj = json.load(resp)
                 if not isinstance(obj, dict):
                     raise ValueError('Unexpected ForeverDB response format')
@@ -144,7 +155,7 @@ def num(value):
         return None
 
 
-def record(raw, detail=False):
+def record(raw, detail=False, item_class_hint=None):
     if not isinstance(raw, dict):
         return None
     identifier = raw.get('id', raw.get('itemId', raw.get('itemID')))
@@ -177,17 +188,23 @@ def record(raw, detail=False):
         elif label and len(unmapped) < 12:
             unmapped.append(str(label)[:80])
 
-    fields = raw.get('stats') or raw.get('attributes') or raw.get('statBonuses') or {}
+    fields = next((raw[k] for k in ('stats', 'attributes', 'statBonuses', 'bonusStats',
+                                      'itemStats', 'statMods', 'itemMods', 'modifiers')
+                   if isinstance(raw.get(k), (dict, list)) and len(raw[k]) > 0), {})
     if isinstance(fields, list):
         for entry in fields:
             if isinstance(entry, dict):
-                label = entry.get('name') or entry.get('statName') or entry.get('stat') or entry.get('label') or entry.get('type') or entry.get('key')
+                label = (entry.get('name') or entry.get('statName') or entry.get('stat')
+                         or entry.get('label') or entry.get('type') or entry.get('key')
+                         or entry.get('statType') or entry.get('modifier'))
+                if isinstance(label, dict):
+                    label = label.get('name') or label.get('label') or label.get('key')
                 value = entry.get('value', entry.get('amount', entry.get('points', entry.get('statValue', entry.get('val')))))
                 if isinstance(label, str) and value is not None:
                     add(label, value)
     elif isinstance(fields, dict):
         for label, entry in fields.items():
-            if isinstance(entry, (int, float)):
+            if isinstance(entry, (int, float, str)):
                 add(label, entry)
             elif isinstance(entry, dict):
                 label = entry.get('name') or entry.get('statName') or label
@@ -218,12 +235,15 @@ def record(raw, detail=False):
     try:
         item_class = int(class_raw)
     except (TypeError, ValueError):
-        item_class = None
+        item_class = item_class_hint
+    if item_class is None:
+        item_class = item_class_hint
     # Preserve item subclass for useful search labels, only when the API
     # provides a recognized client class/subclass classification.
-    subclass_raw = raw.get('subclass', raw.get('subClass', raw.get('subclassName',
-                    raw.get('subClassName', raw.get('armorType', raw.get('weaponType',
-                    raw.get('itemSubclass', raw.get('subclassId'))))))))
+    subclass_raw = next((raw[k] for k in (
+        'subclass', 'subClass', 'subclassName', 'subClassName',
+        'armorType', 'weaponType', 'itemSubclass', 'itemSubClass',
+        'subclassId', 'itemSubclassName') if raw.get(k) is not None), None)
     if isinstance(subclass_raw, dict):
         sub_label = subclass_raw.get('name') or subclass_raw.get('label')
         subclass_raw = sub_label if sub_label else subclass_raw.get('id', subclass_raw.get('value'))
@@ -240,6 +260,15 @@ def record(raw, detail=False):
         subclass = str(subclass_raw or '').strip()
     if subclass.lower() in ('none', 'unknown', 'other', 'miscellaneous'):
         subclass = ''
+    if not subclass:
+        # Do not infer material from item names. Accept only explicit API fields.
+        for key in ('armorType', 'weaponType', 'subclassName', 'subClassName', 'itemSubclassName', 'equipmentType'):
+            value = raw.get(key)
+            if isinstance(value, dict):
+                value = value.get('name') or value.get('label')
+            if isinstance(value, str) and value.strip() and value.lower() not in ('other','unknown','none','miscellaneous'):
+                subclass = value.strip()
+                break
     icon_raw = raw.get('icon') or raw.get('iconName') or raw.get('icon_name') or ''
     if isinstance(icon_raw, dict):
         icon_raw = icon_raw.get('name') or icon_raw.get('filename') or icon_raw.get('path') or ''
@@ -308,7 +337,7 @@ def refresh():
             if not entries:
                 break
             for raw in entries:
-                parsed = record(raw)
+                parsed = record(raw, item_class_hint=item_class)
                 if not parsed:
                     continue
                 # Inventory type 0 explicitly means an item cannot be equipped.
@@ -355,7 +384,7 @@ def refresh():
     # Spend individual detail calls only on weapons/armor; ignore beta-event copies.
     candidates = [it for it in records.values() if suitable_for_details(it) and not it.get('betaEvent')]
     candidates.sort(key=lambda x: (bool(x.get('hasDetail')) and not x.get('stale', False), x.get('speculation', False), x.get('req', 1) > 60, x.get('req', 1), x['remoteId']))
-    print(f'Equipment detail candidates: {len(candidates):,}; already cached: {sum(bool(it.get("hasDetail")) and not it.get("stale", False) for it in candidates):,}', flush=True)
+    print(f'Equipment detail candidates: {len(candidates):,}; already cached: {sum(bool(it.get("hasDetail")) and not it.get("stale", False) for it in candidates):,}; request budget {MAX_DETAILS:,}; API quota remaining {DAILY_REMAINING if DAILY_REMAINING is not None else "header unavailable"}', flush=True)
     updated = 0
     for item in candidates:
         if updated >= MAX_DETAILS:
@@ -364,18 +393,27 @@ def refresh():
             continue
         try:
             response = api_get(f"/items/{item['remoteId']}")
-            parsed = record(single_from(response), detail=True)
+            parsed = record(single_from(response), detail=True, item_class_hint=item.get('_itemClass'))
             if parsed:
                 # Preserve index name and item class if detailed response omits them.
                 item['quality'] = parsed.get('quality') if parsed.get('quality') is not None else item.get('quality')
                 item['itemLevel'] = parsed.get('itemLevel') or item.get('itemLevel')
                 item['icon'] = parsed.get('icon') or item.get('icon')
                 item['subclass'] = parsed.get('subclass') or item.get('subclass')
-                item['stats'] = parsed['stats']
-                item['unmapped'] = parsed['unmapped']
+                # Do not silently erase known mapped bonuses when the API supplies
+                # sparse details, or when a new response shape is not yet understood.
+                previous_stats = item.get('stats') or {}
+                if parsed['stats'] or not previous_stats:
+                    item['stats'] = parsed['stats']
+                    item['unmapped'] = parsed['unmapped']
+                    item['detailBuild'] = build
+                    item['stale'] = False
+                else:
+                    item['stale'] = True
+                    item['unmapped'] = list(dict.fromkeys((item.get('unmapped') or []) +
+                                            ['New detail response did not map to known stats']))[:12]
+                    print(f'WARN item {item["remoteId"]}: new detail has no mapped bonuses; retained prior cached values as stale', flush=True)
                 item['hasDetail'] = True
-                item['detailBuild'] = build
-                item['stale'] = False
         except RateLimitError as err:
             print('Quota reached; publishing available cached records:', err, flush=True)
             break
@@ -398,6 +436,8 @@ def refresh():
             'detailRecords': sum(bool(it.get('hasDetail')) for it in items),
             'staleRecords': sum(bool(it.get('stale')) for it in items),
             'detailRequestsThisRun': updated,
+            'mappedDetailRecords': sum(bool(it.get('stats')) for it in items),
+            'dailyQuotaRemainingAtEnd': DAILY_REMAINING,
         },
         'items': items,
     }
