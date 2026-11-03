@@ -219,11 +219,37 @@ def record(raw, detail=False):
         item_class = int(class_raw)
     except (TypeError, ValueError):
         item_class = None
+    # Preserve item subclass for useful search labels, only when the API
+    # provides a recognized client class/subclass classification.
+    subclass_raw = raw.get('subclass', raw.get('subClass', raw.get('subclassName',
+                    raw.get('subClassName', raw.get('armorType', raw.get('weaponType',
+                    raw.get('itemSubclass', raw.get('subclassId'))))))))
+    if isinstance(subclass_raw, dict):
+        sub_label = subclass_raw.get('name') or subclass_raw.get('label')
+        subclass_raw = sub_label if sub_label else subclass_raw.get('id', subclass_raw.get('value'))
+    armor_types = {1: 'Cloth', 2: 'Leather', 3: 'Mail', 4: 'Plate', 6: 'Shield'}
+    weapon_types = {0: 'One-Hand Axe', 1: 'Two-Hand Axe', 2: 'Bow', 3: 'Gun',
+                    4: 'One-Hand Mace', 5: 'Two-Hand Mace', 6: 'Polearm',
+                    7: 'One-Hand Sword', 8: 'Two-Hand Sword', 10: 'Staff',
+                    13: 'Fist Weapon', 15: 'Dagger', 16: 'Thrown',
+                    18: 'Crossbow', 19: 'Wand', 20: 'Fishing Pole'}
+    if isinstance(subclass_raw, (int, float)) or (isinstance(subclass_raw, str) and subclass_raw.strip().isdigit()):
+        sub_id = int(subclass_raw)
+        subclass = (armor_types if item_class == 4 else weapon_types if item_class == 2 else {}).get(sub_id, '')
+    else:
+        subclass = str(subclass_raw or '').strip()
+    if subclass.lower() in ('none', 'unknown', 'other', 'miscellaneous'):
+        subclass = ''
+    icon_raw = raw.get('icon') or raw.get('iconName') or raw.get('icon_name') or ''
+    if isinstance(icon_raw, dict):
+        icon_raw = icon_raw.get('name') or icon_raw.get('filename') or icon_raw.get('path') or ''
+    icon = str(icon_raw).strip()[:100]
+
     return {
         'name': name[:100], 'remoteId': identifier, 'req': req,
         'quality': raw.get('quality') if isinstance(raw.get('quality'), int) else (raw.get('quality', {}).get('id') if isinstance(raw.get('quality'), dict) else None),
         'itemLevel': raw.get('itemLevel', raw.get('item_level', raw.get('level'))),
-        'icon': str(raw.get('icon') or '')[:100],
+        'icon': icon, 'subclass': subclass[:45],
         'slot': slot[:50], 'stats': stats, 'source': 'ForeverDB',
         'hasDetail': bool(detail), 'unmapped': unmapped,
         'betaEvent': bool(raw.get('betaEvent', False)),
@@ -316,6 +342,8 @@ def refresh():
     for key, item in records.items():
         prev = existing.get(key)
         if prev and prev.get('hasDetail'):
+            item['subclass'] = item.get('subclass') or prev.get('subclass', '')
+            item['icon'] = item.get('icon') or prev.get('icon', '')
             item['stats'] = prev.get('stats', {})
             item['unmapped'] = prev.get('unmapped', [])
             item['hasDetail'] = True
@@ -342,6 +370,7 @@ def refresh():
                 item['quality'] = parsed.get('quality') if parsed.get('quality') is not None else item.get('quality')
                 item['itemLevel'] = parsed.get('itemLevel') or item.get('itemLevel')
                 item['icon'] = parsed.get('icon') or item.get('icon')
+                item['subclass'] = parsed.get('subclass') or item.get('subclass')
                 item['stats'] = parsed['stats']
                 item['unmapped'] = parsed['unmapped']
                 item['hasDetail'] = True
