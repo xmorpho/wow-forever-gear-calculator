@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       detail_limit:
-        description: 'Maximum item details to fetch this run (0-8500); default 1500'
+        description: 'Maximum item details to fetch this run (0-8500); default 8500'
         required: false
-        default: '1500'
+        default: '8500'
         type: string
       force_details:
         description: 'Refresh previously cached details even if the game build is unchanged'
@@ -50,7 +50,7 @@ jobs:
         if: github.event_name != 'push'
         env:
           FOREVERDB_API_KEY: ${{ secrets.FOREVERDB_API_KEY }}
-          MAX_DETAIL_REQUESTS: ${{ github.event.inputs.detail_limit || '1500' }}
+          MAX_DETAIL_REQUESTS: ${{ github.event.inputs.detail_limit || '8500' }}
           FORCE_DETAILS: ${{ github.event.inputs.force_details || 'false' }}
         run: python scripts/refresh_foreverdb.py
 

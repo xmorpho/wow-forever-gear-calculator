@@ -5,6 +5,8 @@ Requires FOREVERDB_API_KEY in GitHub Actions Secrets, never in public files.
 API contract checked 2026-11-03: /api/v1/meta, /api/v1/items, /api/v1/items/{id};
 responses use data + meta, limit <=100, X-API-Key auth, 60/min and 10000/day.
 Details are cached and expanded incrementally to respect quotas.
+Only class 2 (weapons) and class 4 (armor) are indexed/downloaded;
+records explicitly marked as inventory slot 0 are excluded.
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ BASE = 'https://foreverdb.net/api/v1'
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'data' / 'foreverdb-items.json'
 KEY = os.environ.get('FOREVERDB_API_KEY', '').strip()
-MAX_DETAILS = min(max(int(os.environ.get('MAX_DETAIL_REQUESTS', '1500')), 0), 8500)
+MAX_DETAILS = min(max(int(os.environ.get('MAX_DETAIL_REQUESTS', '8500')), 0), 8500)
 FORCE = os.environ.get('FORCE_DETAILS', 'false').lower() == 'true'
 DELAY = 1.15  # 52 req/min max, leaving headroom below ForeverDB's 60/minute limit
 LAST_REQUEST = 0.0
@@ -219,6 +221,9 @@ def record(raw, detail=False):
         item_class = None
     return {
         'name': name[:100], 'remoteId': identifier, 'req': req,
+        'quality': raw.get('quality') if isinstance(raw.get('quality'), int) else (raw.get('quality', {}).get('id') if isinstance(raw.get('quality'), dict) else None),
+        'itemLevel': raw.get('itemLevel', raw.get('item_level', raw.get('level'))),
+        'icon': str(raw.get('icon') or '')[:100],
         'slot': slot[:50], 'stats': stats, 'source': 'ForeverDB',
         'hasDetail': bool(detail), 'unmapped': unmapped,
         'betaEvent': bool(raw.get('betaEvent', False)),
@@ -264,30 +269,46 @@ def refresh():
             print('Existing cache unreadable, building clean index:', err, flush=True)
     print(f'Catalog build: {build}; previous: {old_build or "none"}', flush=True)
 
+    # ForeverDB supports server-side item class filters: 2=weapons, 4=armor.
+    # This avoids spending catalog/detail quota on consumables, reagents and
+    # crafting materials. Keep every equippable category across all classes.
     records = {}
-    offset = 0
-    for page in range(500):
-        obj = api_get(f'/items?limit=100&offset={offset}')
-        entries = array_from(obj)
-        if not entries:
-            break
-        for raw in entries:
-            parsed = record(raw)
-            if parsed:
+    for item_class in (2, 4):
+        offset = 0
+        indexed_this_class = 0
+        for page in range(500):
+            obj = api_get(f'/items?class={item_class}&limit=100&offset={offset}')
+            entries = array_from(obj)
+            if not entries:
+                break
+            for raw in entries:
+                parsed = record(raw)
+                if not parsed:
+                    continue
+                # Inventory type 0 explicitly means an item cannot be equipped.
+                # An absent slot is not assumed to be 0; some list records omit it.
+                raw_slot = raw.get('slot', raw.get('inventoryType', raw.get('inventorySlot', raw.get('equipSlot'))))
+                if isinstance(raw_slot, dict):
+                    raw_slot = raw_slot.get('id', raw_slot.get('value', raw_slot.get('name')))
+                if str(raw_slot).strip().lower() in ('0', 'none', 'non-equippable', 'not equippable'):
+                    continue
+                parsed['_itemClass'] = item_class
                 records[parsed['remoteId']] = parsed
-        offset += len(entries)
-        if page % 25 == 0:
-            print(f'Indexed {len(records):,} items…', flush=True)
-        m = obj.get('meta') or {}
-        total = m.get('total') or ((m.get('pagination') or {}).get('total') if isinstance(m, dict) else None)
-        try:
-            total = int(total)
-        except (ValueError, TypeError):
-            total = None
-        if (total is not None and offset >= total) or len(entries) < 100:
-            break
-    else:
-        raise RuntimeError('Catalog exceeded the 50,000-item safety limit')
+                indexed_this_class += 1
+            offset += len(entries)
+            if page % 25 == 0:
+                print(f'Indexed class {item_class}: {indexed_this_class:,} equippable candidates…', flush=True)
+            m = obj.get('meta') or {}
+            total = m.get('total') or ((m.get('pagination') or {}).get('total') if isinstance(m, dict) else None)
+            try:
+                total = int(total)
+            except (ValueError, TypeError):
+                total = None
+            if (total is not None and offset >= total) or len(entries) < 100:
+                break
+        else:
+            raise RuntimeError(f'Class {item_class} exceeded 50,000-item safety limit')
+    print(f'Equipment-focused catalog: {len(records):,} weapons/armor records across all classes', flush=True)
     if len(records) < 100:
         raise RuntimeError(f'Only {len(records)} valid items received; refusing to replace catalog')
 
@@ -303,9 +324,10 @@ def refresh():
         else:
             item['stale'] = False
 
-    # Prioritize all equippable gear. Unknown item types remain searchable by name.
+    # Spend individual detail calls only on weapons/armor; ignore beta-event copies.
     candidates = [it for it in records.values() if suitable_for_details(it) and not it.get('betaEvent')]
-    candidates.sort(key=lambda x: (not x.get('stale', False) and x.get('hasDetail', False), x.get('speculation', False), x.get('req', 1) > 60, x.get('req', 1), x['remoteId']))
+    candidates.sort(key=lambda x: (bool(x.get('hasDetail')) and not x.get('stale', False), x.get('speculation', False), x.get('req', 1) > 60, x.get('req', 1), x['remoteId']))
+    print(f'Equipment detail candidates: {len(candidates):,}; already cached: {sum(bool(it.get("hasDetail")) and not it.get("stale", False) for it in candidates):,}', flush=True)
     updated = 0
     for item in candidates:
         if updated >= MAX_DETAILS:
@@ -317,6 +339,9 @@ def refresh():
             parsed = record(single_from(response), detail=True)
             if parsed:
                 # Preserve index name and item class if detailed response omits them.
+                item['quality'] = parsed.get('quality') if parsed.get('quality') is not None else item.get('quality')
+                item['itemLevel'] = parsed.get('itemLevel') or item.get('itemLevel')
+                item['icon'] = parsed.get('icon') or item.get('icon')
                 item['stats'] = parsed['stats']
                 item['unmapped'] = parsed['unmapped']
                 item['hasDetail'] = True
