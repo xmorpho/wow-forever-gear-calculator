@@ -1,27 +1,52 @@
 # WoW: Forever Gear Comparison Calculator
 
-An unofficial, fan-made equipment comparison tool for **World of Warcraft: Forever**. Compare two items for any of the game's nine classes, select a specialization and playstyle, and adjust estimated stat weights.
+A free, unofficial, fan-made gear comparison calculator for the **nine World of Warcraft: Forever classes**, hosted using GitHub Pages.
 
-## Play online
+**Live calculator:** https://xmorpho.github.io/wow-forever-gear-calculator/
 
-Once GitHub Pages is enabled, open the website shown under **Settings → Pages**.
+## ForeverDB credit and terms
 
-## Features
+**Item data provided by [ForeverDB.net](https://foreverdb.net).** ForeverDB is the source of the item database. Attribution is also displayed in the calculator's interface beside the item search, catalog controls, and page footer. This independent project is not affiliated with ForeverDB or Blizzard Entertainment.
 
-- Side-by-side item comparison with editable tooltip stats
-- Nine playable classes and their specialization options
-- Estimated Mode (editable, **not authoritative** stat weights) and Verified Mode (no numeric score if required combat formulas are unknown)
-- Searchable starter item catalog, manual item creation, and JSON import/export
-- Optional ForeverDB API-assisted catalog refresh, subject to approval, CORS/network access, and rate limits
+The database is a snapshot, and items or availability may change. Tooltip values take priority. **Some items are indexed before detailed stats have been fetched**. Unmapped bonuses, procs, and use/equip effects are not scored. Beta-event-only and speculative availability flags are not confirmations of obtainability.
 
-## Data credit
+## Publish the site
 
-**Item data from [ForeverDB.net](https://foreverdb.net).** ForeverDB provides the source item data; this calculator is an independent fan project. Original item data may change between client builds; in-game tooltips take precedence.
+Copy these files and folders to the **root** of the `main` branch of this repository, keeping the structure:
 
-## Important limitations
+```text
+index.html
+README.md
+data/foreverdb-items.json
+scripts/refresh_foreverdb.py
+.github/workflows/refresh-foreverdb.yml
+```
 
-The starter catalog is not the entire ForeverDB inventory. Loading additional data directly in your browser is *not* the same as publishing that catalog to all visitors. Estimated item scores are comparisons of user-configured weights, not verified DPS, healing, threat, or survival predictions. No API credentials should be committed to this public repository or placed in `index.html`.
+**Important:** Under **Settings → Pages → Build and deployment → Source**, choose **GitHub Actions** (not "Deploy from a branch"). The included workflow deploys the site when code changes and immediately after catalog refreshes, because commits created with `GITHUB_TOKEN` don't trigger branch-based Pages builds.
 
-## Disclaimer
+## Private API key
 
-Not affiliated with, endorsed by, or sponsored by Blizzard Entertainment or ForeverDB.
+The repository owner creates the secret **`FOREVERDB_API_KEY`** in **Settings → Secrets and variables → Actions**. Never paste the key into `index.html`, a GitHub issue, a commit, or a public chat.
+
+## Get and refresh the catalog
+
+1. In the repository, open **Actions → Refresh ForeverDB catalog**.
+2. Click **Run workflow**, select the `main` branch, and click the green **Run workflow** button.
+3. The action downloads the full paginated item-name index and **up to 1,500 item details** in one run by default, keeping all previously retrieved detail records. Item details progressively become available as the action is run again.
+4. Once the workflow shows a green check, the action commits `data/foreverdb-items.json` to `main` and **directly deploys** the refreshed catalog to GitHub Pages. The calculator will load it when users next visit or click **Reload published catalog** in Catalog status & refresh.
+5. A daily scheduled refresh is configured. Manually run extra batches using `detail_limit` where needed, while respecting ForeverDB's documented limits.
+
+The public site does **not** call ForeverDB with your secret. Only the repository's GitHub Actions workflow sends authenticated requests.
+
+ForeverDB documents **60 requests/minute** and **10,000 requests/day** per key. The updater throttles requests and caps detail calls to leave headroom for paging and other API users. Repeated manual runs share the daily allowance; avoid parallel/manual runs close together.
+
+## Calculator usage and limitations
+
+- Choose class, specialization, level, and playstyle.
+- Search the shared catalog in either item panel. Selecting an item applies its published numeric stats when available, or leaves stats for manual entry when absent.
+- Both comparison items remain editable.
+- **Estimated mode:** numerical relative weights are *illustrative and adjustable*, not verified WoW DPS/healing calculations.
+- **Verified mode:** no numerical score is shown if mechanics required for the comparison aren't documented.
+- Export/import individual configurations and optional personal item lists; these stay separate from the public catalog.
+
+No commercial affiliation or endorsement is implied.

@@ -1,0 +1,82 @@
+name: Publish calculator and refresh ForeverDB catalog
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      detail_limit:
+        description: 'Maximum item details to fetch this run (0-8500); default 1500'
+        required: false
+        default: '1500'
+        type: string
+      force_details:
+        description: 'Refresh previously cached details even if the game build is unchanged'
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: '17 11 * * *' # Daily 11:17 UTC; scheduled times may be delayed
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: wow-forever-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out website and catalog
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Python for API refresh
+        if: github.event_name != 'push'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Refresh item index and incremental stats (only scheduled/manual runs)
+        if: github.event_name != 'push'
+        env:
+          FOREVERDB_API_KEY: ${{ secrets.FOREVERDB_API_KEY }}
+          MAX_DETAIL_REQUESTS: ${{ github.event.inputs.detail_limit || '1500' }}
+          FORCE_DETAILS: ${{ github.event.inputs.force_details || 'false' }}
+        run: python scripts/refresh_foreverdb.py
+
+      - name: Commit current catalog to repository
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/foreverdb-items.json
+          if ! git diff --cached --quiet; then
+            git commit -m "data: refresh ForeverDB item catalog"
+            git push
+          else
+            echo "No catalog changes"
+          fi
+
+      # Explicit Pages deployment is required: pushes by GITHUB_TOKEN do not
+      # trigger branch-source Pages builds. This deploys refreshed data directly.
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Package static website
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: '.'
+
+      - name: Publish GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
