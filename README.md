@@ -1,23 +1,24 @@
-# WoW: Forever Gear Comparator V2.4 — Inventory icon patch
+# WoW: Forever Gear Comparator — Version 2.5 review candidate
 
-Official project website: https://xmorpho.github.io/wow-forever-gear-calculator/
+**Do not publish this review candidate until approved.** This package is separate from the interactive sample preview.
 
-**Source credit:** Item data and embedded tooltip/icon data by [ForeverDB.net](https://foreverdb.net). Game artwork © Blizzard Entertainment; this is an unofficial fan project by Morph.
+## Changes
 
-## What changed
+- Removes the prominent percentage increase from Estimated Mode because item-only scores can create enormous, misleading values from a weak baseline.
+- Places Damage potential, Survivability, Resource efficiency and Healing/utility **side-by-side category bars** in the main recommendation. Each category uses its own pairwise scale (current vs candidate); this does not measure DPS, healing output, or actual combat performance.
+- Leaves exact ratings and calculated category points under Detailed Analysis, and preserves Verified Mode's no-numerical-score restriction.
+- Explains specific item stat deltas, including Frost Damage for a Frost Mage.
+- Improves updater recognition of explicit static school-damage tooltip labels (e.g. `Frost Damage Done`) and equipment effects that use an explicit Equip trigger.
+- Prevents a misleading direct Equip/Keep recommendation for two different equipment slots.
 
-- Restores **real WoW inventory icons**, not drawings, emojis or models. If the local ForeverDB catalog includes a valid icon filename, the UI loads it as a full-size image. If only a ForeverDB item ID is known, the official ForeverDB icon-enabled embed provides the icon. No alternate icon is invented.
-- Adds an explicit `ForeverDBTooltips.refresh()` call for dynamically rendered search results, selected items and saved gear, including on the external script's load event. This was missing in V2.3.
-- Fits a rendered icon to the existing 60/50/44-pixel tile without stretching the item panel, and hides the fallback character once the real icon is loaded.
-- Uses Azure Silk Hood (#7048, `inv_helmet_29`) as the named regression test; its +10 Frost Damage bonus is retained in estimated-mode calculations, with armor and other effects displayed as in the V2.4 preview.
-- Leaves all ForeverDB updater/automation files **unchanged**. There is no API refresh needed for this patch.
+## Known limitations
 
-## How to publish
+- Existing cached detail records that omitted bonuses cannot magically gain them from this code update. To populate missing Frost Damage, the owner must refresh/enrich item details when the ForeverDB quota allows, or enter the stat from the in-game tooltip. No user API key is in these files.
+- The separate icon-sizing fix from 2.4.1 is included in this review candidate. It still needs real-provider validation on the user's computer; the preview screenshot has intentionally blocked external icon downloads. This package does **not** claim that remote icons are fixed.
+- Neither the comparison bars nor rating values are actual performance % changes. All numerical default stat priorities remain estimates.
 
-1. GitHub Desktop: Fetch/Pull origin.
-2. Back up your current `index.html` and `README.md` if you want a local rollback copy.
-3. Replace **only** `index.html` and `README.md` in the repository root with these files. Do **not** delete or modify `data/foreverdb-items.json`, `.github/`, or `scripts/`.
-4. Commit and push; after a green Pages deployment check, force refresh the site (Ctrl+Shift+R).
-5. Test Azure Silk Hood (`7048`) in Current Gear and New Gear, plus a second item with an available catalog icon. Check the icon, armor and Frost Damage note.
+## When approved for publishing
 
-The icon loading integration was tested against a simulated ForeverDB script in a local browser, including DOM injection and layout sizing. The actual third-party icon response cannot be exercised from the offline test environment; please verify on your live published website. The version 2.4 tooltip stat improvements use local tests and do not modify the 8,500 cached records.
+Replace only `index.html` and `scripts/refresh_foreverdb.py`, preserving all other files, especially `data/foreverdb-items.json` and `.github/workflows/refresh-foreverdb.yml`. Push to main as usual. A standard push deploys the website without running a full catalog refresh.
+
+Item data and item links: [ForeverDB.net](https://foreverdb.net). An independent fan project by Morph.

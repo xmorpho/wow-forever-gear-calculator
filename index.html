@@ -115,10 +115,42 @@ main{max-width:1780px;padding:28px clamp(14px,2vw,36px) 70px}h1{font-size:clamp(
 .item-icon-visual:has(> img) .fdb-icon-tile>.icon-placeholder,.item-icon-visual:has(> svg) .fdb-icon-tile>.icon-placeholder{display:none!important}
 .item-icon-visual .fdb-icon-tile> :not(.icon-placeholder){position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;background-size:cover!important}
 .item-icon-visual .fdb-icon-tile:has(> :not(.icon-placeholder))>.icon-placeholder{display:none!important}
+
+/* V2.4.1: Render the actual provider-supplied inventory asset in a predictable
+   square layer. Native ForeverDB markup stays in the link for tooltips, but
+   its intrinsic size no longer controls our tile. */
+.item-icon-visual,.item-icon-visual .fdb-icon-tile{box-sizing:border-box!important;aspect-ratio:1/1!important}
+.item-icon-visual .fdb-icon-tile{isolation:isolate}
+.item-icon-visual .fdb-icon-tile > img.inventory-icon-square{
+  display:block!important;position:absolute!important;top:0!important;left:0!important;
+  width:100%!important;height:100%!important;min-width:100%!important;
+  max-width:none!important;min-height:100%!important;max-height:none!important;
+  object-fit:fill!important;object-position:center!important;
+  border-radius:5px!important;border:0!important;margin:0!important;padding:0!important;
+  z-index:9!important;opacity:1!important;visibility:visible!important;
+}
+.item-icon-visual .fdb-icon-tile.inventory-icon-promoted > :not(.inventory-icon-square){opacity:0!important}
+.item-icon-visual .fdb-icon-tile.inventory-icon-promoted{border:1px solid var(--gear-rarity,#526781)!important;border-radius:7px!important}
+
+/* V2.5: visually compare categories instead of presenting a giant percentage. */
+.comparison-overview{margin-top:15px;border:1px solid #38536a;border-radius:12px;padding:13px;background:#101d2c}
+.comparison-overview-title{font-size:13px;color:#f0d39a;font-weight:750;margin-bottom:8px}
+.comparison-key{display:flex;gap:15px;font-size:11px;color:#b8c9da;margin-bottom:12px}
+.comparison-key span{display:inline-flex;align-items:center;gap:6px}
+.comparison-key i{height:10px;width:10px;display:inline-block;border-radius:2px;background:#65b8e1}
+.comparison-key span:nth-child(2) i{background:#bc88e5}
+.comparison-measure{margin:0 0 12px}
+.comparison-measure-title{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:12px}
+.comparison-measure-title em{font-size:10px;color:#b9c5d3;font-style:normal;text-align:right}
+.pair-bars{display:grid;gap:4px}.pair-bar{height:10px;border-radius:6px;background:#293646;overflow:hidden}
+.pair-bar div{height:100%;border-radius:6px}.pair-bar.a div{background:#65b8e1}.pair-bar.b div{background:#bc88e5}
+.comparison-caption{font-size:11px;color:#98abc0;line-height:1.5;margin-top:8px}
+.result-focus{font-size:13px;color:#eacb92;margin-top:12px;font-weight:650}
+@media(max-width:560px){.comparison-overview{padding:10px}.comparison-measure-title{font-size:11px}}
 </style>
 </head>
 <body><main>
-<header class="top"><div><div class="eyebrow">GEAR DECISIONS, MADE SIMPLE</div><h1><span class="brandmark">⚔</span> WoW: Forever <span style="color:var(--gold)">Gear Comparator</span></h1><div class="intro"><strong style="color:#f6e1b3">Should you equip that new piece of gear?</strong><br>Compare item tooltips, discover potential upgrades, and understand why one item is better for your class, specialization, and playstyle.</div></div><span class="tag">VERSION 2.4 · FOREVERDB</span></header>
+<header class="top"><div><div class="eyebrow">GEAR DECISIONS, MADE SIMPLE</div><h1><span class="brandmark">⚔</span> WoW: Forever <span style="color:var(--gold)">Gear Comparator</span></h1><div class="intro"><strong style="color:#f6e1b3">Should you equip that new piece of gear?</strong><br>Compare item tooltips, discover potential upgrades, and understand why one item is better for your class, specialization, and playstyle.</div></div><span class="tag">VERSION 2.5 PREVIEW · FOREVERDB</span></header>
 <section class="panel settings"><div class="sectionTitle"><h2>Character configuration</h2><div class="mode"><button id="estimatedMode" class="on" type="button">Estimated mode</button><button id="verifiedMode" type="button">Verified mode</button></div></div><div class="options"><div class="field"><label for="class">Class</label><select id="class"><option>Hunter</option><option>Mage</option><option>Druid</option><option>Warrior</option><option>Paladin</option><option>Rogue</option><option>Priest</option><option>Shaman</option><option>Warlock</option></select></div><div class="field"><label for="level">Level (1–60)</label><input id="level" type="number" min="1" max="60" step="1" value="30"></div><div class="field"><label for="spec">Specialization</label><select id="spec"></select></div><div class="field"><label for="playstyle">Playstyle</label><select id="playstyle"><option value="solo">Solo questing</option><option value="dungeon">Dungeon DPS</option><option value="pvp">PvP</option><option value="aoe">AoE farming</option><option value="raid">Raiding</option></select></div><div class="field"><label for="slot">Slot / comparison</label><select id="slot"><option>Same-slot gear</option><option>Ranged weapon</option><option>Melee weapon</option><option>Caster weapon</option><option>Other</option></select></div></div><div id="hunters" class="advancedSettings"><div class="field"><label for="petshare">Estimated pet contribution to damage (%)</label><input type="number" id="petshare" min="0" max="100" step="1" value="40"><span class="tiny">Editable assumption, NOT verified DPS share</span></div><div class="field"><label for="carefulAim">Careful Aim points (0–5)</label><select id="carefulAim"><option value="0">0 — Not taken</option><option value="1">1 (+20% Int → AP)</option><option value="2">2 (+40% Int → AP)</option><option value="3">3 (+60% Int → AP)</option><option value="4">4 (+80% Int → AP)</option><option value="5">5 (+100% Int → AP)</option></select></div><div class="field"><label>Hunter setup</label><span class="flex" style="padding:7px 0"><label class="checkbox"><input id="petActive" type="checkbox" checked> Pet active</label><label class="checkbox"><input id="loneWolf" type="checkbox"> Lone Wolf active</label></span><span id="hunterTalentNote" class="tiny"></span></div></div><div class="info" id="modeInfo">Estimated mode produces <strong>weighted proxy scores</strong>, not measured DPS, survival %, mana per second, or in-game gear score. All weights are editable.</div></section>
 <section class="panel profile-bar" aria-label="Saved characters"><div class="profile-identity"><div class="profile-glyph">♜</div><div><strong>My Character</strong><div class="tiny" id="profileStatus">Optional · save equipped gear for one-click comparisons</div></div></div><div class="tools"><select id="profileSelect" aria-label="Select saved character"><option value="">Quick Compare · no saved character</option></select><button id="createProfile" class="small gold">+ New character</button><button id="saveProfile" class="small">Save character</button><button id="toggleGear" class="small">View equipment ▾</button></div></section>
 <details class="panel profiles" id="characterDrawer"><summary><b>Character equipment</b><span class="tiny">Click a slot to view, add or replace its equipment</span></summary><div class="description" id="profileIntro">Add your equipped gear to a saved character, then select any new drop to compare against it automatically. Your character data stays in this browser.</div><div class="character-grid" id="profileSlots"></div><section id="gearTotals" class="gear-totals" aria-live="polite"></section><details class="character-admin"><summary>Character management</summary><div class="tools"><label class="field" style="min-width:195px">Equipment slot <select id="equipSlot"></select></label><button id="assignCurrent" class="small">Save Current Gear to slot</button><button id="equipNew" class="small gold">Equip New Gear in slot</button><button id="removeSlot" class="small subtle">Clear slot</button><button id="deleteProfile" class="small subtle">Delete character</button></div></details><div class="tiny" style="margin-top:12px">Replacing equipment in this planner never equips anything in WoW. For rings, trinkets and weapon combinations, choose the slot deliberately. Profiles and overrides remain private to your browser; export a backup from Advanced Settings.</div></details>
@@ -513,19 +545,79 @@ function queueForeverDBIconRefresh(){
  });
 }
 window.addEventListener('foreverdb-embed-ready',queueForeverDBIconRefresh);
+
+// ForeverDB's embed can insert an icon at its own inline size. Our square icon
+// is a *second presentation* of that exact asset, not a different icon.
+// The provider's link, tooltip behavior and remote artwork remain unchanged.
+let iconSquareScanQueued=false;
+function normalizeForeverDBIconTiles(){
+ for(const tile of document.querySelectorAll('.item-icon-visual .fdb-icon-tile')){
+  if(tile.querySelector(':scope > img.inventory-icon-square'))continue;
+  if(tile.querySelector(':scope > img.gear-icon-img'))continue;
+  let url='';
+  const candidates=[];
+  function visit(node,depth){
+   if(!node||depth>7||candidates.length>140)return;
+   if(node.nodeType===1){
+    const el=node;
+    if(el.classList?.contains('inventory-icon-square')||el.classList?.contains('icon-placeholder'))return;
+    candidates.push(el);
+    if(el.shadowRoot)visit(el.shadowRoot,depth+1);
+   }
+   for(const child of node.children||[])visit(child,depth+1);
+  }
+  visit(tile,0);
+  // Prefer a genuine image URL from ForeverDB's own injected icon elements.
+  for(const el of candidates){
+   if(el instanceof HTMLImageElement && el.currentSrc||el instanceof HTMLImageElement && el.src){
+    const value=el.currentSrc||el.src;
+    if(value && !value.startsWith('blob:')){url=value;break;}
+   }
+  }
+  // Some embed versions use background-image rather than <img>.
+  if(!url)for(const el of candidates){
+   for(const pseudo of [null,'::before']){
+    const bg=getComputedStyle(el,pseudo).backgroundImage||'';
+    const m=bg.match(/^url\(["']?(.*?)["']?\)$/);
+    if(m&&m[1]&&!m[1].includes('gradient')){url=m[1];break;}
+   }
+   if(url)break;
+  }
+  if(!url)continue;
+  const normalized=new Image();normalized.className='inventory-icon-square';normalized.alt='';
+  normalized.decoding='async';
+  normalized.onload=()=>{if(normalized.isConnected)tile.classList.add('inventory-icon-promoted')};
+  normalized.onerror=()=>{tile.classList.remove('inventory-icon-promoted');normalized.remove()};
+  normalized.src=url;
+  tile.appendChild(normalized);
+  if(normalized.complete&&normalized.naturalWidth>0)tile.classList.add('inventory-icon-promoted');
+ }
+}
+function queueIconSquareScan(){
+ if(iconSquareScanQueued)return;
+ iconSquareScanQueued=true;
+ requestAnimationFrame(()=>{iconSquareScanQueued=false;normalizeForeverDBIconTiles()});
+}
+const iconSquareObserver=new MutationObserver(queueIconSquareScan);
+iconSquareObserver.observe(document.body,{childList:true,subtree:true});
+window.addEventListener('foreverdb-embed-ready',queueIconSquareScan);
+
 function iconVisual(item,embed=false){
  const id=Number(item?.remoteId),linked=Number.isSafeInteger(id)&&id>0;
- // 7048 has the documented WoW inventory icon inv_helmet_29.
- // Other items must use their own supplied icon name or ForeverDB's embed.
- const slug=iconSlug(item)||(id===7048?'inv_helmet_29':'');
+ // Prefer the item's stored icon name; known examples have confirmed inventory slugs.
+ // Otherwise use the official ForeverDB embed and render its actual artwork in a square.
+ const knownIcons={7048:'inv_helmet_29',7053:'inv_chest_cloth_14'};
+ const slug=iconSlug(item)||knownIcons[id]||'';
  const title=optionText(item?.name||'Item');
+ const rarity=['#6a7583','#b5bdc9','#2bd66e','#4298f0','#aa70ee','#ffa53b'][Math.max(0,Math.min(5,Number(item?.quality)||0))];
+ const rarityStyle='style=\"--gear-rarity:'+rarity+'\"';
  const placeholder='<span class="icon-placeholder" aria-hidden="true">◇</span>';
  const src=slug?`<img class="gear-icon-img" alt="" loading="lazy" src="https://wow.zamimg.com/images/wow/icons/large/${slug}.jpg" onerror="this.remove()">`:'';
  if(linked){
   // Do not use a decorative graphic or a guessed image as the item icon.
   // When slug is missing, the official ForeverDB script adds the real icon.
-  if(!slug)queueForeverDBIconRefresh();
-  return `<span class="icon-fallback item-icon-visual"><a class="fdb-icon-tile" href="https://foreverdb.net/item/${id}" data-foreverdb="item:${id}" data-foreverdb-icons="${slug?'false':'true'}" data-foreverdb-color-links="false" target="_blank" rel="noopener noreferrer" aria-label="${title} on ForeverDB">${src}${placeholder}</a></span>`;
+  if(!slug){queueForeverDBIconRefresh();queueIconSquareScan();}
+  return `<span class="icon-fallback item-icon-visual" ${rarityStyle}><a class="fdb-icon-tile" href="https://foreverdb.net/item/${id}" data-foreverdb="item:${id}" data-foreverdb-icons="${slug?'false':'true'}" data-foreverdb-color-links="false" target="_blank" rel="noopener noreferrer" aria-label="${title} on ForeverDB">${src}${placeholder}</a></span>`;
  }
  return `<span class="icon-fallback item-icon-visual">${src}${placeholder}</span>`;
 }
@@ -627,8 +719,19 @@ function showLookup(side){const id=side?'B':'A',input=$('name'+id),el=$('lookup'
  el.classList.remove('hidden');input.setAttribute('aria-expanded','true');el.querySelector('button.suggestion')?.classList.add('focused');
 }
 function scoreReason(z){const label=stats[z.k].label,delta=z.delta,pos=delta>0,numberText=`${pos?'+':''}${fmt(delta,2)} ${label}`;
- let why=pos?'Gained':'Lost';if(z.k==='int')why+=' · affects caster power and mana potential depending on your build';else if(z.k==='sta')why+=' · affects survivability';else if(z.k==='crit'||z.k==='hit')why+=' · may affect attack consistency';else if(z.k==='wdps')why+=' · relevant to weapon attacks';else if(z.k==='armor')why+=' · contributes to physical durability';else if(z.k==='sp'||z.k==='heal')why+=' · affects the relevant spell bonuses';else why+=' relative to your current gear';
+ let why=pos?'Gained':'Lost';if(z.k==='int')why+=' · affects caster power and mana potential depending on your build';else if(z.k==='sta')why+=' · affects survivability';else if(z.k==='crit'||z.k==='hit')why+=' · may affect attack consistency';else if(z.k==='wdps')why+=' · relevant to weapon attacks';else if(z.k==='armor')why+=' · contributes to physical durability';else if(['frost','fire','arcane','nature','shadow','holy'].includes(z.k))why+=` · ${label.toLowerCase()} directly benefits matching spell types (estimated, not exact DPS)`;else if(z.k==='sp'||z.k==='heal')why+=' · affects the relevant spell bonuses';else why+=' relative to your current gear';
  return `<div class="reason"><span class="reason-sign ${pos?'':'neg'}">${pos?'+':'−'}</span><div><strong>${optionText(numberText)}</strong><div class="tiny">${optionText(why)}</div></div></div>`;
+}
+function compactComparisonBars(c){
+ const names={d:'Damage potential',s:'Survivability',r:'Resource efficiency',h:'Healing / utility'};
+ const rows=CATS.map(k=>{const a=c.A.cat[k],b=c.B.cat[k],gap=b-a,prio=c.priorities[k];
+  if(a<0||b<0)return `<div class="comparison-measure"><div class="comparison-measure-title"><b>${names[k]}</b><em>Custom negative weights — see detailed analysis</em></div></div>`;
+  const maximum=Math.max(.00001,a,b),visible=maximum>.0001;
+  const wa=visible?100*a/maximum:0,wb=visible?100*b/maximum:0;
+  const label=prio===0?'Not prioritized':Math.abs(gap)<.0001?'About even':gap>0?'New gear leads':'Current gear leads';
+  return `<div class="comparison-measure"><div class="comparison-measure-title"><b>${names[k]}</b><em>${label}</em></div><div class="pair-bars" aria-label="${names[k]}: Current ${fmt(a,2)} and new ${fmt(b,2)} estimated category points"><div class="pair-bar a"><div style="width:${Math.min(100,wa)}%"></div></div><div class="pair-bar b"><div style="width:${Math.min(100,wb)}%"></div></div></div></div>`;
+ }).join('');
+ return `<div class="comparison-overview"><div class="comparison-overview-title">How the gear compares</div><div class="comparison-key"><span><i></i>Current</span><span><i></i>New gear</span></div>${rows}<div class="comparison-caption">Each pair of bars uses its own scale and reflects assumed stat priorities, not measured DPS or survivability. Read alongside the stat changes below.</div></div>`;
 }
 function renderResults(){const c=calc(),out=$('results'),changes=deltas(c),a=state.items[0],b=state.items[1];const haveA=activeItemRows(a).some(r=>r.val!==null),haveB=activeItemRows(b).some(r=>r.val!==null),ready=haveA&&haveB;
  $('resultMode').textContent=state.mode==='verified'?'VERIFIED':'ESTIMATED';
@@ -636,14 +739,14 @@ function renderResults(){const c=calc(),out=$('results'),changes=deltas(c),a=sta
   out.innerHTML=`<div class="notice"><strong>Verified comparison — no numerical upgrade rating</strong><p>Forever's complete combat conversions are not published. Here's what the two tooltips explicitly show; the calculator will not invent damage or survivability percentages.</p></div>${changes.length?changes.slice(0,30).map(z=>`<div class="statdelta"><span>${optionText(stats[z.k].label)}</span><b>${z.delta>=0?'+':''}${fmt(z.delta,2)}</b></div>`).join(''):'<div class="hint">Select both items to compare their listed stats.</div>'}<details class="result-expand"><summary>Confirmed mechanics and limitations</summary>${verifiedFacts(c)}${[a,b].some(x=>tooltipData(x).effects.length)?'<div class="hint">Item equip/use effects are displayed in the item panels but are not assumed to change combat performance.</div>':''}${warnings(c.warnings)}</details>`;return;
  }
  if(!ready){out.innerHTML=`<div class="notice"><strong>Ready for your next drop</strong><p>${!a.name?'Search for your current item or load a saved equipment slot.':!b.name?'Search for your new item.':'One or both items have no usable numeric attributes yet. The current catalog record may still be missing its details; no recommendation will be guessed.'}</p></div>`;return}
- const diff=c.B.score-c.A.score,base=Math.abs(c.A.score),percent=base>1e-9?100*diff/base:null,close=percent!==null?Math.abs(percent)<2:Math.abs(diff)<.000001,choice=close?'tie':diff>0?'equip':'keep';
+ const diff=c.B.score-c.A.score,scale=Math.max(10,Math.abs(c.A.score),Math.abs(c.B.score)),close=Math.abs(diff)<=scale*.05,choice=close?'tie':diff>0?'equip':'keep';
  let hero=choice==='tie'?'Too close to call':choice==='equip'?'Equip the new item':'Keep your current item';
  let description=choice==='tie'?'The two items are similarly suited to your current build.':choice==='equip'?`${optionText(b.name||'New gear')} is a better fit for your ${optionText(state.spec)} ${optionText(state.cls)}.`:`${optionText(a.name||'Current gear')} remains the better fit for your ${optionText(state.spec)} ${optionText(state.cls)}.`;
  const slotA=slotGroup(a.slot),slotB=slotGroup(b.slot),mismatch=Boolean(slotA&&slotB&&slotA!==slotB&&!(slotA.startsWith('Finger')&&slotB.startsWith('Finger'))&&!(slotA.startsWith('Trinket')&&slotB.startsWith('Trinket')));
- let warning='';if(mismatch)warning='<div class="notice">⚠ Different equipment slots. This is a raw stat comparison, not a valid one-for-one replacement.</div>';
+ let warning='';if(mismatch){hero='Not a direct replacement';description='These items use different equipment slots. Their stat strengths are shown below, but one cannot replace the other.';warning='<div class="notice">⚠ Different equipment slots. This is not an Equip/Keep decision.</div>';}
  if([a,b].some(x=>x.unmapped?.length||tooltipData(x).effects.some(e=>!effectBonus(e))))warning+='<div class="hint">⚠ One or both items have effects not included in the estimated rating. The recommendation may be incomplete; check the full tooltip.</div>';
  const plus=changes.filter(z=>z.delta>0).slice(0,3),minus=changes.filter(z=>z.delta<0).slice(0,2),reasons=[...plus,...minus].sort((x,y)=>y.mag-x.mag).slice(0,4);
- out.innerHTML=`<div class="result-hero ${choice}"><div class="result-head">${hero}</div><div class="result-sub">${description}</div><div class="result-percent ${choice==='keep'?'keep':''}">${percent===null?'—':`${diff>0?'+':''}${fmt(percent,1)}%`}</div><div class="result-mini">${choice==='tie'?'Similar estimated gear value':choice==='equip'?'Estimated gear upgrade':'Estimated change vs new gear'} · Based on item stats and priorities for this build, not measured DPS.</div></div>${warning}<h3 style="color:#efc981;margin-top:18px">Why ${choice==='tie'?'they are close':choice==='equip'?'it’s better':'you should keep it'}</h3><div class="result-reasons">${reasons.length?reasons.map(scoreReason).join(''):'<div class="tiny">Both items have similar listed stats.</div>'}</div><div class="compact-actions"><button class="small gold" id="equipFromResult" type="button" ${activeProfileId&&b.name?'':'disabled'}>Equip in My Character</button></div><details class="result-expand"><summary>View detailed analysis · damage, survival, resources, healing</summary><div class="scoreline"><div class="scorecard"><div class="scoreHint">CURRENT ITEM</div><div class="big blue">${fmt(c.A.score,1)}</div><div class="scoreHint">Gear rating</div></div><div class="scorecard"><div class="scoreHint">NEW ITEM</div><div class="big purple">${fmt(c.B.score,1)}</div><div class="scoreHint">Gear rating</div></div></div><div class="metrics">${CATS.map(k=>metricLine(k,c)).join('')}</div><div class="notice"><b>How the estimate works</b><p>These are comparisons using assumed class/spec/playstyle priorities, not real combat outcomes. Verified damage conversions for Forever are still incomplete. Rating attributes lacking confirmed conversions have no default score impact.</p></div>${warnings(c.warnings)}</details>`;
+ out.innerHTML=`<div class="result-hero ${choice}"><div class="result-head">${hero}</div><div class="result-sub">${description}</div><div class="result-focus">${choice==='tie'?'Similar overall fit':'Most important differences shown below'}</div><div class="result-mini">${choice==='tie'?'Similar estimated gear value':choice==='equip'?'Estimated gear upgrade':'Estimated change vs new gear'} · Based on item stats and priorities for this build, not measured DPS.</div></div>${warning}${compactComparisonBars(c)}<h3 style="color:#efc981;margin-top:18px">${mismatch?'Stat trade-offs':`Why ${choice==='tie'?'they are close':choice==='equip'?'it’s better':'you should keep it'}`}</h3><div class="result-reasons">${reasons.length?reasons.map(scoreReason).join(''):'<div class="tiny">Both items have similar listed stats.</div>'}</div><div class="compact-actions"><button class="small gold" id="equipFromResult" type="button" ${activeProfileId&&b.name&&!mismatch?'':'disabled'}>Equip in My Character</button></div><details class="result-expand"><summary>View detailed rating calculations & assumptions</summary><div class="scoreline"><div class="scorecard"><div class="scoreHint">CURRENT ITEM</div><div class="big blue">${fmt(c.A.score,1)}</div><div class="scoreHint">Gear rating</div></div><div class="scorecard"><div class="scoreHint">NEW ITEM</div><div class="big purple">${fmt(c.B.score,1)}</div><div class="scoreHint">Gear rating</div></div></div><div class="metrics">${CATS.map(k=>metricLine(k,c)).join('')}</div><div class="notice"><b>How the estimate works</b><p>These are comparisons using assumed class/spec/playstyle priorities, not real combat outcomes. Verified damage conversions for Forever are still incomplete. Rating attributes lacking confirmed conversions have no default score impact. Each category bar is scaled independently, and raw score changes are not actual performance percentages.</p></div>${warnings(c.warnings)}</details>`;
  const equip=$('equipFromResult');if(equip)equip.onclick=()=>equipCandidate();
 }
 function weightKey(){return `${state.cls}|${state.spec}|${state.playstyle}`}

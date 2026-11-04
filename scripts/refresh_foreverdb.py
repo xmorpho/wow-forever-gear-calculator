@@ -50,10 +50,10 @@ ALIASES = {
     'armor': 'armor', 'health': 'hp', 'mana': 'mana',
     'spell penetration': 'spellpen', 'expertise': 'expertise',
     'weapon skill': 'skill', 'defense': 'def', 'block value': 'blockval',
-    'all resistances': 'resist', 'fire damage': 'fire',
-    'frost damage': 'frost', 'arcane damage': 'arcane',
-    'nature damage': 'nature', 'shadow damage': 'shadow',
-    'holy damage': 'holy', 'pet damage': 'petd',
+    'all resistances': 'resist', 'fire damage': 'fire', 'fire damage done': 'fire', 'fire spell damage': 'fire',
+    'frost damage': 'frost', 'frost damage done': 'frost', 'frost spell damage': 'frost', 'arcane damage': 'arcane', 'arcane damage done': 'arcane', 'arcane spell damage': 'arcane',
+    'nature damage': 'nature', 'nature damage done': 'nature', 'nature spell damage': 'nature', 'shadow damage': 'shadow', 'shadow damage done': 'shadow', 'shadow spell damage': 'shadow',
+    'holy damage': 'holy', 'holy damage done': 'holy', 'holy spell damage': 'holy', 'pet damage': 'petd',
 }
 
 class RateLimitError(Exception):
@@ -190,7 +190,7 @@ def record(raw, detail=False, item_class_hint=None):
             unmapped.append(str(label)[:80])
 
     fields = next((raw[k] for k in ('stats', 'attributes', 'statBonuses', 'bonusStats',
-                                      'itemStats', 'statMods', 'itemMods', 'modifiers')
+                                      'itemStats', 'statMods', 'itemMods', 'modifiers', 'bonuses', 'bonusAttributes')
                    if isinstance(raw.get(k), (dict, list)) and len(raw[k]) > 0), {})
     if isinstance(fields, list):
         for entry in fields:
@@ -319,7 +319,7 @@ def record(raw, detail=False, item_class_hint=None):
                 try:
                     trigger = trigger_names.get(int(code), 'Effect')
                 except (ValueError, TypeError):
-                    trigger = ('Equip' if field == 'equipEffects' else 'Use' if field == 'useEffects' else
+                    trigger = ('Equip' if field == 'equipEffects' or str(code).strip().lower().replace('_',' ') in ('equip','on equip','on equip passive','on equipped') else 'Use' if field == 'useEffects' else
                                'Chance on hit' if field == 'chanceOnHitEffects' else 'Effect')
             else:
                 continue
@@ -333,6 +333,16 @@ def record(raw, detail=False, item_class_hint=None):
                 line = f'{trigger}: {message}'
             if line not in seen_effects:
                 effect_texts.append(line[:260]);seen_effects.add(line)
+    # Safe, static equip bonuses can be numerically compared using estimated weights.
+    # Keep the full effect text for display. Unknown effects remain unscored.
+    for line in effect_texts:
+        match = re.fullmatch(r'Equip:\s*\+(\d+(?:\.\d+)?)\s+(Frost|Fire|Arcane|Nature|Shadow|Holy)\s+Damage(?:\s+Done)?\.?', line, re.I)
+        if match:
+            stats.setdefault(match.group(2).lower(), float(match.group(1)))
+        match = re.fullmatch(r'Equip:\s*\+(\d+(?:\.\d+)?)\s+Spell\s+Power\.?', line, re.I)
+        if match:
+            stats.setdefault('sp', float(match.group(1)))
+
     # The literal item-effect name in API responses may be less descriptive
     # than the rendered tooltip. The official embed supplies the full tooltip.
     binding = raw.get('binding', raw.get('bonding', ''))
