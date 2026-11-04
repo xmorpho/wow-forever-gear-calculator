@@ -15,6 +15,11 @@ on:
         required: false
         default: false
         type: boolean
+      enrich_tooltips:
+        description: 'Prioritize older cached items missing armor/effects fields (recommended once for V2.3)'
+        required: false
+        default: true
+        type: boolean
   schedule:
     - cron: '17 11 * * *' # Daily 11:17 UTC; scheduled times may be delayed
 
@@ -52,6 +57,7 @@ jobs:
           FOREVERDB_API_KEY: ${{ secrets.FOREVERDB_API_KEY }}
           MAX_DETAIL_REQUESTS: ${{ github.event.inputs.detail_limit || '8500' }}
           FORCE_DETAILS: ${{ github.event.inputs.force_details || 'false' }}
+          ENRICH_TOOLTIPS: ${{ github.event_name == 'schedule' && 'true' || github.event.inputs.enrich_tooltips || 'false' }}
         run: python scripts/refresh_foreverdb.py
 
       - name: Commit current catalog to repository

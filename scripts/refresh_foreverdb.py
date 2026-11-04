@@ -27,6 +27,7 @@ OUT = ROOT / 'data' / 'foreverdb-items.json'
 KEY = os.environ.get('FOREVERDB_API_KEY', '').strip()
 MAX_DETAILS = min(max(int(os.environ.get('MAX_DETAIL_REQUESTS', '8500')), 0), 8500)
 FORCE = os.environ.get('FORCE_DETAILS', 'false').lower() == 'true'
+ENRICH_TOOLTIPS = os.environ.get('ENRICH_TOOLTIPS', 'false').lower() == 'true'
 DELAY = 1.15  # 52 req/min max, leaving headroom below ForeverDB's 60/minute limit
 DAILY_REMAINING = None
 DAILY_RESERVE = 20  # Avoid hitting the hard daily limit when headers reveal remaining quota
@@ -269,17 +270,82 @@ def record(raw, detail=False, item_class_hint=None):
             if isinstance(value, str) and value.strip() and value.lower() not in ('other','unknown','none','miscellaneous'):
                 subclass = value.strip()
                 break
-    icon_raw = raw.get('icon') or raw.get('iconName') or raw.get('icon_name') or ''
+    icon_raw = next((raw.get(k) for k in (
+        'icon', 'iconName', 'icon_name', 'iconFilename', 'iconFile',
+        'iconPath', 'inventoryIcon', 'iconTexture', 'iconTextureName') if raw.get(k)), '')
     if isinstance(icon_raw, dict):
-        icon_raw = icon_raw.get('name') or icon_raw.get('filename') or icon_raw.get('path') or ''
+        icon_raw = (icon_raw.get('name') or icon_raw.get('filename')
+                    or icon_raw.get('path') or icon_raw.get('iconName') or '')
     icon = str(icon_raw).strip()[:100]
 
+    # Tooltip presentation is separate from scored numeric item bonuses.
+    # Never guess unverified combat values from effect names.
+    armor_data = raw.get('armor', raw.get('armorValue', raw.get('baseArmor', raw.get('armorRating'))))
+    if isinstance(armor_data, dict):
+        armor_data = armor_data.get('value', armor_data.get('amount', armor_data.get('armor')))
+    armor = num(armor_data)
+    if armor is None and item_class == 4:
+        armor = stats.get('armor')
+    if armor is not None and armor >= 0 and item_class == 4:
+        stats['armor'] = armor  # Armor is also a numeric defensive bonus.
+    effect_texts = []
+    seen_effects = set()
+    # WoW item spell trigger: 0=Use, 1=Equip, 2=Chance on hit.
+    trigger_names = {0: 'Use', 1: 'Equip', 2: 'Chance on hit'}
+    for field in ('effects', 'itemEffects', 'itemSpells', 'spells', 'equipEffects', 'useEffects', 'chanceOnHitEffects'):
+        entries = raw.get(field)
+        if isinstance(entries, dict):
+            entries = list(entries.values())
+        if not isinstance(entries, list):
+            continue
+        for effect in entries[:35]:
+            if isinstance(effect, str):
+                message, trigger = effect, 'Effect'
+            elif isinstance(effect, dict):
+                spell = effect.get('spell') if isinstance(effect.get('spell'), dict) else {}
+                message = next((effect.get(k) for k in (
+                    'tooltip', 'tooltipText', 'displayText', 'description', 'effectDescription',
+                    'text', 'spellDescription', 'spellName', 'name') if isinstance(effect.get(k), str) and effect.get(k).strip()), None)
+                message = message or next((spell.get(k) for k in ('description', 'tooltip', 'name') if isinstance(spell.get(k), str)), None)
+                if not message:
+                    continue
+                # Verified public ForeverDB tooltip: spell 8747 means
+                # 'Increases swim speed by 15%.' (e.g. Azure Silk Belt #7052).
+                # Do not generalize this label to other spell IDs.
+                if (str(effect.get('spellId', spell.get('id', ''))) == '8747' and
+                        str(message).strip().lower().startswith('swimming speed')):
+                    message = 'Increases swim speed by 15%.'
+                code = effect.get('trigger', effect.get('triggerType', effect.get('spellTrigger')))
+                try:
+                    trigger = trigger_names.get(int(code), 'Effect')
+                except (ValueError, TypeError):
+                    trigger = ('Equip' if field == 'equipEffects' else 'Use' if field == 'useEffects' else
+                               'Chance on hit' if field == 'chanceOnHitEffects' else 'Effect')
+            else:
+                continue
+            message = re.sub(r'<[^>]*>', '', str(message)).strip()
+            if not message:
+                continue
+            # Recognized full tooltip lines retain their original wording.
+            if re.match(r'^(Equip|Use|Chance on hit|Passive)\s*:', message, re.I):
+                line = message
+            else:
+                line = f'{trigger}: {message}'
+            if line not in seen_effects:
+                effect_texts.append(line[:260]);seen_effects.add(line)
+    # The literal item-effect name in API responses may be less descriptive
+    # than the rendered tooltip. The official embed supplies the full tooltip.
+    binding = raw.get('binding', raw.get('bonding', ''))
+    if isinstance(binding, dict):
+        binding = binding.get('name') or binding.get('label') or ''
     return {
         'name': name[:100], 'remoteId': identifier, 'req': req,
         'quality': raw.get('quality') if isinstance(raw.get('quality'), int) else (raw.get('quality', {}).get('id') if isinstance(raw.get('quality'), dict) else None),
         'itemLevel': raw.get('itemLevel', raw.get('item_level', raw.get('level'))),
         'icon': icon, 'subclass': subclass[:45],
         'slot': slot[:50], 'stats': stats, 'source': 'ForeverDB',
+        'display': ({'armor': armor if armor is not None and armor >= 0 else None,
+                     'effects': effect_texts[:20], 'binding': str(binding or '')[:80]} if detail else {}),
         'hasDetail': bool(detail), 'unmapped': unmapped,
         'betaEvent': bool(raw.get('betaEvent', False)),
         'speculation': bool(raw.get('speculation', False)),
@@ -375,6 +441,7 @@ def refresh():
             item['icon'] = item.get('icon') or prev.get('icon', '')
             item['stats'] = prev.get('stats', {})
             item['unmapped'] = prev.get('unmapped', [])
+            item['display'] = prev.get('display') or {}
             item['hasDetail'] = True
             item['detailBuild'] = prev.get('detailBuild') or old_build or 'unknown'
             item['stale'] = build != 'unknown' and item['detailBuild'] != build
@@ -383,14 +450,18 @@ def refresh():
 
     # Spend individual detail calls only on weapons/armor; ignore beta-event copies.
     candidates = [it for it in records.values() if suitable_for_details(it) and not it.get('betaEvent')]
-    candidates.sort(key=lambda x: (bool(x.get('hasDetail')) and not x.get('stale', False), x.get('speculation', False), x.get('req', 1) > 60, x.get('req', 1), x['remoteId']))
+    candidates.sort(key=lambda x: (
+        0 if ENRICH_TOOLTIPS and x.get('hasDetail') and not x.get('display') else
+        1 if not x.get('hasDetail') or x.get('stale') else 2,
+        x.get('speculation', False), x.get('req', 1) > 60, x.get('req', 1), x['remoteId']))
     print(f'Equipment detail candidates: {len(candidates):,}; already cached: {sum(bool(it.get("hasDetail")) and not it.get("stale", False) for it in candidates):,}; request budget {MAX_DETAILS:,}; API quota remaining {DAILY_REMAINING if DAILY_REMAINING is not None else "header unavailable"}', flush=True)
     updated = 0
     for item in candidates:
         if updated >= MAX_DETAILS:
             break
         if item.get('hasDetail') and not item.get('stale') and not FORCE:
-            continue
+            if not (ENRICH_TOOLTIPS and not item.get('display')):
+                continue
         try:
             response = api_get(f"/items/{item['remoteId']}")
             parsed = record(single_from(response), detail=True, item_class_hint=item.get('_itemClass'))
@@ -400,11 +471,23 @@ def refresh():
                 item['itemLevel'] = parsed.get('itemLevel') or item.get('itemLevel')
                 item['icon'] = parsed.get('icon') or item.get('icon')
                 item['subclass'] = parsed.get('subclass') or item.get('subclass')
+                # Keep already published presentation data when the newest response is sparse.
+                old_display = item.get('display') or {}
+                new_display = parsed.get('display') or {}
+                item['display'] = {
+                    'armor': new_display.get('armor') if new_display.get('armor') is not None else old_display.get('armor'),
+                    'effects': new_display.get('effects') or old_display.get('effects') or [],
+                    'binding': new_display.get('binding') or old_display.get('binding') or '',
+                }
                 # Do not silently erase known mapped bonuses when the API supplies
                 # sparse details, or when a new response shape is not yet understood.
                 previous_stats = item.get('stats') or {}
+                old_detail_build = item.get('detailBuild')
                 if parsed['stats'] or not previous_stats:
-                    item['stats'] = parsed['stats']
+                    # On the same build, merge fields: incomplete API shapes
+                    # must not erase stats already obtained for this build.
+                    item['stats'] = ({**previous_stats, **parsed['stats']} if
+                                     old_detail_build == build else parsed['stats'])
                     item['unmapped'] = parsed['unmapped']
                     item['detailBuild'] = build
                     item['stale'] = False
@@ -437,6 +520,7 @@ def refresh():
             'staleRecords': sum(bool(it.get('stale')) for it in items),
             'detailRequestsThisRun': updated,
             'mappedDetailRecords': sum(bool(it.get('stats')) for it in items),
+            'tooltipEnhancedRecords': sum(bool(it.get('display')) for it in items),
             'dailyQuotaRemainingAtEnd': DAILY_REMAINING,
         },
         'items': items,

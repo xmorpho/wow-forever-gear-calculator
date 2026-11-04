@@ -1,4 +1,4 @@
-# ⚔ WoW: Forever Gear Comparator — V2.2
+# ⚔ WoW: Forever Gear Comparator — V2.3
 
 **Made by Morph.** A free, unofficial gear companion for World of Warcraft: Forever. **Should I equip this new item?** Search for equipment, compare actual available tooltip attributes, and see an Equip / Keep / Too Close to Call recommendation based on your selected class and playstyle.
 
@@ -8,12 +8,12 @@
 
 **Item data and embedded item tooltips are provided by [ForeverDB.net](https://foreverdb.net).** The application retains a visible source link alongside its item catalog and in its footer. Please retain that visible credit in future versions. ForeverDB's [developer rules](https://foreverdb.net/developers) require source attribution wherever its data is displayed. The official [tooltip integration](https://foreverdb.net/embed) is also included. WoW game assets belong to their respective owners. This website is not affiliated with Blizzard or ForeverDB.
 
-## What's fixed in V2.2
+## What's changed in V2.3
 
-- **Full-size item icons:** 60px icon in tooltip cards, 50px in character equipment, 44px in dropdown search. The official ForeverDB integration still powers hover tooltips, but it no longer injects a competing small icon next to the name.
-- **Stat display/data regression protections:** existing downloaded numeric stats are preserved if an incomplete ForeverDB response supplies no mapped values. The importer also supports more safely recognized numeric-stat field shapes. If a record is genuinely unmapped, it is explicitly labelled instead of showing a fabricated zero or score.
-- **Equipment types:** the updater retains the requested item class (weapon/armor) when decoding numeric subclass IDs, so search labels can show `Head · Lv 30 · Leather`, `Main Hand · Lv 24 · Staff`, etc., when backed by API metadata.
-- **Same site and personal data:** all saved characters and personal priority overrides stay in browser storage; `data/foreverdb-items.json` is not included in the ZIP.
+- **Missing icons:** The UI requests the official ForeverDB icon for items with an ID when the catalog lacks a usable icon filename. Item icon tiles fill their box; if the remote embed does not supply an image (network blocker, unsupported dynamic node), a neutral placeholder remains. The icon integration needs a live-site test.
+- **Complete tooltip presentation:** Distinguishes **base armor** from primary bonuses and lists available **Equip/Use/Chance on hit** effects underneath the attributes in green. These are *displayed* and are **not automatically included in scoring**. The item's ForeverDB link opens the authoritative full tooltip.
+- **Better catalog extraction:** The refresher stores armor and readable item-effect names/descriptions from individual ForeverDB records, plus available icon metadata. A known swim-speed spell effect (#8747) uses ForeverDB's published tooltip wording. Unknown effect names are preserved without fabricating a description.
+- **Legacy cache enrichment:** Already downloaded records from V2.2 **do not include** the armor/effect descriptions discarded by the old parser. Running the workflow with **enrich_tooltips=true** requests those records again (within your daily API allowance) while retaining your previously mapped stats. This uses API requests but does not delete your progress. The scheduled refresh also enables enrichment.
 
 ## Existing V2.1 features
 
@@ -27,7 +27,7 @@
 
 Preserved: all nine classes and specs, estimated/verified toggle, smarter unordered-word searches, gear ratings and plain-English recommendations, saved characters, local custom stat priorities, JSON backups, and documented source limitations.
 
-## Publish V2.2 without starting an API refresh
+## Publish V2.3 without starting an API refresh
 
 1. In GitHub Desktop, **Fetch origin**, then **Pull origin** if offered.
 2. Extract the ZIP and copy **only these four files** into the corresponding paths in your cloned repository, replacing the old versions:
@@ -36,7 +36,7 @@ Preserved: all nine classes and specs, estimated/verified toggle, smarter unorde
    - `scripts/refresh_foreverdb.py`
    - `.github/workflows/refresh-foreverdb.yml`
 3. **Do not delete or replace `data/foreverdb-items.json`**. Your existing downloaded catalog and its detailed item records remain intact.
-4. In GitHub Desktop, commit as `V2.2 icons, stat mapping and gear metadata` and **Push origin**.
+4. In GitHub Desktop, commit as `V2.3 tooltip details and icon fixes` and **Push origin**.
 5. The normal push publishes the current website and its existing catalog **without spending a ForeverDB API request**. Wait for a green Publish check on Actions, then Ctrl+Shift+R on the site.
 
 ## Private equipment catalog updates
@@ -45,13 +45,17 @@ Preserved: all nine classes and specs, estimated/verified toggle, smarter unorde
 
 The updated catalog script indexes **weapons and armor only** (ForeverDB classes 2 and 4, which also cover rings/trinkets/shields) and retrieves detailed records incrementally. It now also stores item subclass and icon names when ForeverDB provides them. It preserves valid prior stat details and progressively covers the remaining equipment records. The API is limited to 60 requests/minute and 10,000 requests/day per key, so completion can require multiple daily runs. Do not start overlapping updates. When the response includes a clearly named daily-remaining header, the updater stops before consuming the final 20 daily requests; otherwise it saves partial progress upon a 429.
 
-### Today's maximum equipment-only refresh
+### Restore missing armor/effect data on cached items
 
-After publishing V2.2, go to **GitHub → Actions → Publish calculator and refresh ForeverDB catalog → Run workflow**. Enter `8500` for **detail_limit** and leave **force_details** unchecked. The script first indexes only class 2/4 items, skips detail requests already cached for the same client build, and makes up to 8,500 *additional detail requests*, bounded by your remaining 10,000/day quota. It will stop earlier if the daily remaining quota is too low. **We cannot know your remaining quota before the run.** Check the workflow log for `Saved ... detailed records`; normal code pushes do not refresh the API.
+Do **not** start another large refresh until the API's daily allowance has reset and you have sufficient remaining requests. To enrich the records already downloaded, open **GitHub → Actions → Publish calculator and refresh ForeverDB catalog → Run workflow**:
 
-This can take several hours if a full 8,500 details are needed. Do not start concurrent runs, because both would count against the same API key. A successful run doesn't guarantee every item has a mapped numerical stat or every icon is available.
+- **detail_limit:** `8500` maximum, but use a lower number if unsure of your remaining daily quota.
+- **force_details:** `false` (unchecked).
+- **enrich_tooltips:** `true` (checked). This prioritizes existing cached records missing tooltip presentation fields, then moves on to unprocessed equipment. A large run can take hours at 60 requests/minute. Preserve the existing catalog JSON.
 
-The workflow also automatically deploys the updated static catalog to the existing GitHub Pages website. Shared catalog refreshes never overwrite someone's saved character or personal stat priorities in their browser.
+The first enrichment pass may show *the same number* of items with downloaded details, because it is adding **previously discarded armor and effect descriptions** to existing records rather than finding new items. Future runs can then resume adding new equipment. The scheduled workflow also enables this enrichment automatically.
+
+ForeverDB limits API use to 60 requests/minute and 10,000/day per key. The updater tries to preserve 20 requests when remaining-quota headers are available, or stops on a 429 during details. Item index requests count too. Don't run simultaneous jobs. Changes become visible only after the entire workflow successfully publishes to GitHub Pages.
 
 ## Limitations and privacy
 
@@ -62,4 +66,4 @@ The workflow also automatically deploys the updated static catalog to the existi
 
 **API and tooltip reference pages checked:** November 3, 2026.
 
-**Testing note:** the changes have been exercised with simulated API responses and a browser fixture. The real ForeverDB response for your private key has not been accessible to the developer during this release; verify one of your previous problem items after the live run.
+**Testing note:** The updater passed unit and mocked catalog-enrichment integration tests, and the inline JavaScript passed a syntax check. A live browser/icon integration test could not be completed here. The private API key and actual published catalog were not accessed. Please verify icon loading and item effect descriptions on the live site after publishing and enrichment.
